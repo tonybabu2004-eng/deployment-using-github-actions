@@ -1,55 +1,71 @@
-name: Build
+name: Build and Deploy
 
 on:
   push:
     branches:
       - master
 
-
 jobs:
   build:
     name: Build
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
         with:
-          fetch-depth: 0  # Shallow clone should be disabled for a better relevancy of analysis
-      - uses: sonarsource/sonarqube-scan-action@master
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
         env:
-           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
             -Dsonar.projectKey=swiggy
             -Dsonar.projectName=swiggy
             -Dsonar.sources=.
+
       - name: NPM Install
         run: npm install
-        
-      - name: Docker build and push
+
+      - name: Docker build and push to ECR
         run: |
-          # Run commands to build and push Docker images
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 204615365209.dkr.ecr.us-east-1.amazonaws.com
           docker build -t tony-repo .
           docker tag tony-repo:latest 204615365209.dkr.ecr.us-east-1.amazonaws.com/tony-repo:latest
           docker push 204615365209.dkr.ecr.us-east-1.amazonaws.com/tony-repo:latest
         env:
           DOCKER_CLI_ACI: 1
+
   deploy:
-   needs: build
-   runs-on: [self-hosted]
-   steps:
-      - name: docker pull image
+    name: Deploy
+    needs: build
+    runs-on: [self-hosted]
+    steps:
+      - name: Docker pull image
         run: docker pull 204615365209.dkr.ecr.us-east-1.amazonaws.com/tony-repo:latest
-      - name: Image scan
-        run: trivy image 204615365209.dkr.ecr.us-east-1.amazonaws.com/tony-repo:latest > trivyimagedeploy.txt  
+
+      - name: Image scan with Trivy
+        run: trivy image 204615365209.dkr.ecr.us-east-1.amazonaws.com/tony-repo:latest > trivyimagedeploy.txt
+
       - name: Stop and remove existing container
         run: |
           docker stop swiggy-clone || true
           docker rm swiggy-clone || true
-      - name: Deploy to container
+
+      - name: Run new container
         run: docker run -d --name swiggy-clone -p 3000:3000 204615365209.dkr.ecr.us-east-1.amazonaws.com/tony-repo:latest
-      - name: Update kubeconfig
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig for EKS
         run: aws eks update-kubeconfig --region us-east-1 --name EKS_CLOUD
-      - name: Deploy to kubernetes
-        run: kubectl apply -f deployment-service.yml --validate=false
+
+      - name: Deploy to Kubernetes
+        run: kubectl apply -f deployment-service.yml
