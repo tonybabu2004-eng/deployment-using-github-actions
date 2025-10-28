@@ -16,11 +16,16 @@ jobs:
         with:
           fetch-depth: 0  # Required for full analysis
 
-      - name: Run SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@master
+      - name: Run SonarQube Scan (Debug)
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          sonar-scanner -X \
+            -Dsonar.projectKey=Swiggy \
+            -Dsonar.sources=. \
+            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.login=$SONAR_TOKEN
 
       - name: Check Quality Gate
         uses: sonarsource/sonarqube-quality-gate-action@master
