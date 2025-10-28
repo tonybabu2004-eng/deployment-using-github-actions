@@ -20,6 +20,6 @@ jobs:
            SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=Swiggy
-            -Dsonar.projectName=Swiggy
+            -Dsonar.projectKey=swiggy
+            -Dsonar.projectName=swiggy
             -Dsonar.sources=.
